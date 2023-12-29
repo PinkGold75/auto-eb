@@ -2,6 +2,8 @@
 import re
 import subprocess
 
+EB_FILE_PATH = ["$HOME/git-sources/ycrc-ebfiles/easyconfigs", "/gpfs/radev/apps/avx512/software/EasyBuild/4.8.2/easybuild/easyconfigs"]
+
 class Parser:
 
     def __init__(self, input_text, regex=""):
@@ -29,25 +31,40 @@ class EbDependency:
         self.ebfile = ebfile
         self.dependency = []
 
-    def dryrun(self, keep_installed=False):
-        cmd = ["eb", "--dry-run", self.ebfile]
-        output = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
+    def run(self, command):
+        cmd = command + [self.ebfile]
+        output = subprocess.run(cmd, capture_output=True, text=True)
         #print(output)
+        return output.stdout+output.stderr
+    
+    def create_list(self, keep_installed=False):
+        output = self.run(["eb", "--dry-run"])
+        #print("NOT ACTUAL ERROR MESSAGE:\n", output)
         regex = "\* \[ |x\]"
         #self.dependency = Parser(output, regex).parse()
+        items = Parser(output, regex).parse()
         # extract ebfile name: "] ebfilename ("
         p = re.compile("\] (.*) \(")
-        items = Parser(output, regex).parse()
         # remove the last item which is the ebfile provided
-        items.pop()
-        for item in items:
-            if keep_installed:
-                depend = p.search(item).group(1)
-                self.dependency.append(depend)
-            if re.search("\[ \]", item) is not None:
-                depend = p.search(item).group(1)
-                self.dependency.append(depend)
-        return self.dependency
+        if len(items)>0:
+            items.pop()
+            for item in items:
+                if keep_installed:
+                    depend = p.search(item).group(1)
+                    self.dependency.append(depend)
+                elif re.search("\[ \]", item) is not None:
+                    depend = p.search(item).group(1)
+                    self.dependency.append(depend)
+            return self.dependency
+        else:
+            items = re.findall("(?:(?<= )).*?(?=,)", output[output.find("dependencies:")+1:]) #substring of output starting from 'dependencies:'
+            for item in items:
+                print("item = ", item)
+            #p = re.compile("dependencies\: (.*) \(no easyconfig")
+            #missing_depends = p.search(output).group(1)
+            #print(missing_depends)
+            
+            exit()
 
     def print_dependency(self):
         print(self.dependency)
@@ -63,7 +80,7 @@ class EbBfsTree:
         #eb_dependency = EbDependency(self.ebfile)
         print(ebfile)
         eb_dependency = EbDependency(ebfile)
-        deps = eb_dependency.dryrun()
+        deps = eb_dependency.create_list()
         for dep in deps:
             if dep in self.dependency:
                 self.dependency.remove(dep)
@@ -94,7 +111,8 @@ class EbBfsTree:
 #deps.print_dependency()
 
 eb_bfs_tree = EbBfsTree()
-eb_bfs_tree.build("/home/pl543/git-sources/ycrc-ebfiles/easyconfigs/ScaLAPACK/ScaLAPACK-2.1.0-gompi-2020b.eb")
+#eb_bfs_tree.build("/home/pl543/git-sources/ycrc-ebfiles/easyconfigs/ScaLAPACK/ScaLAPACK-2.1.0-gompi-2020b.eb")
+eb_bfs_tree.build("/home/pl543/workspace/test/TensorFlow-2.15.0-foss-2022b-CUDA-12.2.2.eb")
 eb_bfs_tree.print()
 # test code for Parser
 #input_text = """  * [x] line1
